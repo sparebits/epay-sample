@@ -1,0 +1,21 @@
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+</head>
+<body>
+
+<h3>ePay Payment Form</h3>
+
+<form th:action="@{${epayUrl}}" method="post">
+<input type="hidden" name="MIN" th:value="${merchantId}">
+<input type="text" name="INVOICE" value="123456">
+<input type="text" name="AMOUNT" value="0.0">
+<input type="text" name="DESCR" value="test payment">
+<input type="hidden" name="EXP_TIME" th:value="${expires}">
+<input type="hidden" name="PAGE" value="paylogin">
+<input type="hidden" name="ENCODED" th:value="${secret}">
+<input type="hidden" name="CHECKSUM" th:value="${checksum}">
+<input type=submit>
+</form>
+
+</body>
+</html>
