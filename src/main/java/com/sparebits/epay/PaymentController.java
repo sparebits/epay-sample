@@ -4,19 +4,22 @@
  */
 package com.sparebits.epay;
 
-import java.io.UnsupportedEncodingException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
-import java.util.Base64;
-
-import javax.xml.bind.DatatypeConverter;
-
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import javax.servlet.http.HttpServletRequest;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import java.util.Base64;
+import java.util.Formatter;
 
 /**
  * @author nneikov
@@ -24,28 +27,68 @@ import org.springframework.web.bind.annotation.GetMapping;
 @Controller
 public class PaymentController {
 
-	@Value("${sample.epay-url:https://demo.epay.bg/}")
-	private String ePayUrl;
+    private static final String HMAC_SHA1_ALGORITHM = "HmacSHA1";
 
-	@Value("${sample.merchant-id:}")
-	private String merchantId;
 
-	@Value("${sample.secret:}")
-	private String secret;
+    @Value("${sample.epay-url:https://demo.epay.bg/}")
+    private String ePayUrl;
 
-	@GetMapping("/")
-	public String paymentForm(Model model) throws NoSuchAlgorithmException, UnsupportedEncodingException {
-		model.addAttribute("epayUrl", ePayUrl);
-		model.addAttribute("merchantId", merchantId);
-		model.addAttribute("expires", LocalDate.now().plus(1, ChronoUnit.DAYS));
-		
-		String base64 = new String(Base64.getEncoder().encode(secret.getBytes()));
-		MessageDigest digest = MessageDigest.getInstance("SHA1");
-		digest.update(base64.getBytes("UTF-8"), 0, base64.length());
-		String checksum = DatatypeConverter.printHexBinary(digest.digest());
-		model.addAttribute("secret", base64);
-		model.addAttribute("checksum", checksum);
-		return "payment-form";
-	}
+    @Value("${sample.merchant-id:}")
+    private String merchantId;
+
+    @Value("${sample.secret:}")
+    private String secret;
+
+    @Autowired
+    private HttpServletRequest request;
+
+
+    @GetMapping("/")
+    public String paymentForm(Model model) throws NoSuchAlgorithmException, InvalidKeyException {
+
+        StringBuilder data = new StringBuilder();
+        data.append("MIN=").append(merchantId).append('\n');
+        data.append("INVOICE=").append((int)Math.floor(Math.random()*10000000)).append('\n');
+        data.append("AMOUNT=").append(22.80).append('\n');
+        data.append("CURRENCY=").append("BGN").append('\n');
+        data.append("EXP_TIME=").append(LocalDateTime.now().plus(15, ChronoUnit.MINUTES).format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm"))).append('\n');
+        data.append("DESCR=").append("sample transaction").append('\n');
+
+        String encoded = new String(Base64.getEncoder().encode(data.toString().getBytes()));
+        model.addAttribute("encoded", encoded);
+		model.addAttribute("checksum", calculateRFC2104HMAC(encoded, secret));
+        model.addAttribute("epayUrl", ePayUrl);
+
+        return "payment-form";
+    }
+
+
+    public String calculateRFC2104HMAC(String data, String key) throws NoSuchAlgorithmException, InvalidKeyException {
+        SecretKeySpec signingKey = new SecretKeySpec(key.getBytes(), HMAC_SHA1_ALGORITHM);
+        Mac mac = Mac.getInstance(HMAC_SHA1_ALGORITHM);
+        mac.init(signingKey);
+        return toHexString(mac.doFinal(data.getBytes()));
+    }
+
+
+    private String toHexString(byte[] bytes) {
+        Formatter formatter = new Formatter();
+        for (byte b : bytes) {
+            formatter.format("%02x", b);
+        }
+        return formatter.toString();
+    }
+
+
+    @GetMapping("/payment-success")
+    public String success(HttpServletRequest request) {
+        return "payment-success";
+    }
+
+
+    @GetMapping("/payment-cancel")
+    public String cancel(HttpServletRequest request) {
+        return "payment-cancel";
+    }
 
 }
